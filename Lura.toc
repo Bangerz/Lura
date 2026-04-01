@@ -1,0 +1,10 @@
+## Interface: 110007,120000,120001,120002
+## Title: L'ura
+## Notes: Quick /say raid marker bar (brace tags e.g. T {star}). Options, /lura, keybinds. See GitHub for source.
+## Author: Bangerz-DarkIron
+## Version: 1.0.0
+## IconTexture: Interface\TargetingFrame\UI-RaidTargetingIcon_4
+## SavedVariables: LuraDB
+
+Lura.lua
+##Bindings.xml
