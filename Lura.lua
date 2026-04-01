@@ -8,7 +8,7 @@ local ADDON_NAME = ...
 BINDING_HEADER_LURA = "L'ura"
 _G["BINDING_NAME_CLICK LuraButton1:LeftButton"] = "L'ura: Say Circle"
 _G["BINDING_NAME_CLICK LuraButton2:LeftButton"] = "L'ura: Say Diamond"
-_G["BINDING_NAME_CLICK LuraButton3:LeftButton"] = "L'ura: Say Star"
+_G["BINDING_NAME_CLICK LuraButton3:LeftButton"] = "L'ura: Say T"
 _G["BINDING_NAME_CLICK LuraButton4:LeftButton"] = "L'ura: Say Triangle"
 _G["BINDING_NAME_CLICK LuraButton5:LeftButton"] = "L'ura: Say X"
 
@@ -32,7 +32,7 @@ local POINTS = {
 local SYMBOLS = {
 	{ name = "Circle",   raidIcon = 2, chat = "Circle",   brace = "{circle}" },
 	{ name = "Diamond",  raidIcon = 3, chat = "Diamond",  brace = "{diamond}" },
-	{ name = "Star",     raidIcon = 1, chat = "T",        brace = "{star}" },
+	{ name = "T",        raidIcon = 1, chat = "T",        brace = "{star}" },
 	{ name = "Triangle", raidIcon = 4, chat = "Triangle", brace = "{triangle}" },
 	{ name = "X",        raidIcon = 7, chat = "X",        brace = "{x}" },
 }
