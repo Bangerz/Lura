@@ -1,6 +1,6 @@
 --[[
 	L'ura — quick /say buttons for raid marker callouts.
-	Each /say is spoken text plus a brace tag (e.g. T {star}, Circle {circle}).
+	Raid pulls are in combat: ChatEdit_SendText / prefilled chat will not submit. Clicks use SecureActionButton + /s macro.
 ]]
 
 local ADDON_NAME = ...
@@ -103,10 +103,6 @@ local function ApplyLayout()
 	end
 end
 
-local function SaySymbol(chatText)
-	SendChatMessage(chatText, "SAY")
-end
-
 local function CreateMainUI()
 	bar = CreateFrame("Frame", "LuraBar", UIParent, "BackdropTemplate")
 	bar:SetFrameStrata("MEDIUM")
@@ -159,7 +155,7 @@ local function CreateMainUI()
 
 	local prev = grip
 	for i, sym in ipairs(SYMBOLS) do
-		local btn = CreateFrame("Button", "LuraButton" .. i, bar, "BackdropTemplate")
+		local btn = CreateFrame("Button", "LuraButton" .. i, bar, "SecureActionButtonTemplate,BackdropTemplate")
 		btn:SetSize(btnW, btnH)
 		if i == 1 then
 			btn:SetPoint("LEFT", grip, "RIGHT", pad, 0)
@@ -201,9 +197,15 @@ local function CreateMainUI()
 			self:SetBackdropBorderColor(0.35, 0.35, 0.45, 0.5)
 			GameTooltip_Hide()
 		end)
-		btn:SetScript("OnClick", function()
-			SaySymbol(BuildSayMessage(sym))
-		end)
+		btn:RegisterForClicks("LeftButtonUp", "LeftButtonDown")
+		btn:SetAttribute("type", "macro")
+		local macroLine = "/s " .. BuildSayMessage(sym)
+		if #macroLine > 255 then
+			print("|cffff5555L'ura:|r line too long for macro (255 max).")
+		else
+			btn:SetAttribute("macrotext", macroLine)
+		end
+		btn:SetAttribute("useOnKeyDown", true)
 	end
 
 	createdUI = true
