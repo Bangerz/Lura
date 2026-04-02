@@ -1,6 +1,7 @@
 --[[
 	L'ura — quick /say buttons for raid marker callouts.
-	Raid pulls are in combat: ChatEdit_SendText / prefilled chat will not submit. Clicks use SecureActionButton + /s macro.
+	Raid pulls are in combat: ChatEdit_SendText / prefilled chat will not submit. Clicks use SecureActionButton + macro.
+	While alive: /s. While dead or ghost: /raid if in a raid, else /p if in a group, else /s.
 ]]
 
 local ADDON_NAME = ...
@@ -43,6 +44,55 @@ end
 
 local bar, grip, settingsCategory
 local createdUI = false
+local luraButtons = {}
+
+local function MacroChatPrefix()
+	if not UnitIsDeadOrGhost("player") then
+		return "/s "
+	end
+	if IsInRaid() then
+		return "/raid "
+	end
+	if IsInGroup() then
+		return "/p "
+	end
+	return "/s "
+end
+
+local function TooltipChannelLabel()
+	if not UnitIsDeadOrGhost("player") then
+		return "Say"
+	end
+	if IsInRaid() then
+		return "Raid"
+	end
+	if IsInGroup() then
+		return "Party"
+	end
+	return "Say"
+end
+
+local function RefreshLuraButtonMacros()
+	-- Secure attributes can't be changed while alive in combat lockdown; dead/ghost is not combat-locked even during a boss encounter.
+	if InCombatLockdown() and not UnitIsDeadOrGhost("player") then
+		return
+	end
+	if not luraButtons[1] then
+		return
+	end
+	local prefix = MacroChatPrefix()
+	for i, sym in ipairs(SYMBOLS) do
+		local btn = luraButtons[i]
+		if btn then
+			local macroLine = prefix .. BuildSayMessage(sym)
+			if #macroLine > 255 then
+				print("|cffff5555L'ura:|r line too long for macro (255 max).")
+			else
+				btn:SetAttribute("macrotext", macroLine)
+			end
+		end
+	end
+end
 
 local function MergeDefaults()
 	LuraDB = LuraDB or {}
@@ -190,7 +240,7 @@ local function CreateMainUI()
 			self:SetBackdropBorderColor(0.65, 0.75, 1, 0.95)
 			GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
 			GameTooltip:AddLine(sym.name, 1, 1, 1)
-			GameTooltip:AddLine("Say: |cffffffff" .. BuildSayMessage(sym) .. "|r", 0.85, 0.85, 0.85, true)
+			GameTooltip:AddLine(TooltipChannelLabel() .. ": |cffffffff" .. BuildSayMessage(sym) .. "|r", 0.85, 0.85, 0.85, true)
 			GameTooltip:Show()
 		end)
 		btn:SetScript("OnLeave", function(self)
@@ -199,14 +249,11 @@ local function CreateMainUI()
 		end)
 		btn:RegisterForClicks("LeftButtonUp", "LeftButtonDown")
 		btn:SetAttribute("type", "macro")
-		local macroLine = "/s " .. BuildSayMessage(sym)
-		if #macroLine > 255 then
-			print("|cffff5555L'ura:|r line too long for macro (255 max).")
-		else
-			btn:SetAttribute("macrotext", macroLine)
-		end
 		btn:SetAttribute("useOnKeyDown", true)
+		luraButtons[i] = btn
 	end
+
+	RefreshLuraButtonMacros()
 
 	createdUI = true
 	ApplyLayout()
@@ -489,7 +536,7 @@ local function RegisterOptions()
 		function()
 			ResetToDefaults()
 		end,
-		"Restore default scale, anchor, and offsets.\n\nSlash: |cffaaaaaa/lura help|r, |cffaaaaaa/lura reset|r, |cffaaaaaa/lura config|r.",
+		"Restore default scale, anchor, and offsets.\n\nWhen you're dead or a ghost: raid if you're in a raid, otherwise party if grouped, otherwise say.\n\nSlash: |cffaaaaaa/lura help|r, |cffaaaaaa/lura reset|r, |cffaaaaaa/lura config|r.",
 		true
 	)
 	local settingsLayout = layout or (SettingsPanel and SettingsPanel.GetLayout and SettingsPanel:GetLayout(category))
@@ -499,6 +546,17 @@ local function RegisterOptions()
 
 	Settings.RegisterAddOnCategory(category)
 end
+
+local macroRefreshFrame = CreateFrame("Frame")
+macroRefreshFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+macroRefreshFrame:RegisterEvent("PLAYER_DEAD")
+macroRefreshFrame:RegisterEvent("PLAYER_ALIVE")
+macroRefreshFrame:RegisterEvent("PLAYER_UNGHOST")
+macroRefreshFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+macroRefreshFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+macroRefreshFrame:SetScript("OnEvent", function()
+	RefreshLuraButtonMacros()
+end)
 
 local loader = CreateFrame("Frame")
 loader:RegisterEvent("ADDON_LOADED")
