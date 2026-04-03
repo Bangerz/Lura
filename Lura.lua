@@ -1,8 +1,8 @@
 --[[
-	L'ura — quick /raid or /p buttons for raid marker callouts.
+	L'ura — quick /raid buttons for raid marker callouts.
 	Raid pulls are in combat: ChatEdit_SendText / prefilled chat will not submit. Clicks use SecureActionButton + macro.
-	In a raid, macros use /raid; in a party, /p (raid markers still parse in party chat).
-	Order sync uses addon messages on leader/assist PreClick (not CHAT_MSG_RAID — self-echo is unreliable). PARTY or RAID distribution by group type.
+	Macros always use /raid only so SetAttribute("macrotext") never swaps chat mode on roster changes (combat blocks SetAttribute; party↔raid would desync).
+	Order sync uses addon messages on leader/assist PreClick (PARTY or RAID by group type). Not CHAT_MSG_RAID — self-echo is unreliable.
 	Order strip is a separate frame (icons, own grip/position). /lura show|hide|toggle controls both; leader bar only shows if solo or raid/party lead or assist.
 	Queue clears 30s after the last icon, or when you leave the group.
 ]]
@@ -256,6 +256,10 @@ local function OrderAddonDistribution()
 end
 
 -- Do not rely on CHAT_MSG_RAID for our own /raid line: retail often omits or alters self-chat events.
+-- PreClick runs once per click phase; RegisterForClicks had both Up+Down and doubled broadcasts — debounce same icon.
+local lastOrderPreclickByIcon = {}
+local ORDER_PRECLICK_DEBOUNCE = 0.22
+
 local function BroadcastOrderFromLeaderClick(sym)
 	if not sym or not PlayerMayBroadcastOrderAddon() then
 		return
@@ -264,12 +268,19 @@ local function BroadcastOrderFromLeaderClick(sym)
 	if not dist then
 		return
 	end
+	local now = GetTime()
+	local iconIdx = sym.raidIcon
+	local prev = lastOrderPreclickByIcon[iconIdx]
+	if prev and (now - prev) < ORDER_PRECLICK_DEBOUNCE then
+		return
+	end
+	lastOrderPreclickByIcon[iconIdx] = now
 	broadcastSeq = broadcastSeq + 1
-	local payload = "a:" .. tostring(broadcastSeq) .. ":" .. tostring(sym.raidIcon)
+	local payload = "a:" .. tostring(broadcastSeq) .. ":" .. tostring(iconIdx)
 	pcall(function()
 		C_ChatInfo.SendAddonMessage(ORDER_PREFIX, payload, dist)
 	end)
-	AppendOrderIcon(sym.raidIcon)
+	AppendOrderIcon(iconIdx)
 end
 
 local function OnAddonOrderMessage(sender, msg)
@@ -298,23 +309,10 @@ local function OnAddonOrderMessage(sender, msg)
 	AppendOrderIcon(icon)
 end
 
-local function MacroChatPrefix()
-	if IsInRaid() then
-		return "/raid "
-	end
-	if IsInGroup() then
-		return "/p "
-	end
-	return "/raid "
-end
+-- Always /raid: changing macrotext when party↔raid would require SetAttribute during combat (blocked) or stale macros.
+local RAID_MACRO_PREFIX = "/raid "
 
 local function TooltipChannelLabel()
-	if IsInRaid() then
-		return "Raid"
-	end
-	if IsInGroup() then
-		return "Party"
-	end
 	return "Raid"
 end
 
@@ -329,7 +327,7 @@ local function RefreshLuraButtonMacros()
 	for i, sym in ipairs(SYMBOLS) do
 		local btn = luraButtons[i]
 		if btn then
-			local macroLine = MacroChatPrefix() .. BuildSayMessage(sym)
+			local macroLine = RAID_MACRO_PREFIX .. BuildSayMessage(sym)
 			if #macroLine > 255 then
 				print("|cffff5555L'ura:|r line too long for macro (255 max).")
 			else
@@ -602,9 +600,10 @@ local function CreateMainUI()
 			self:SetBackdropBorderColor(0.35, 0.35, 0.45, 0.5)
 			GameTooltip_Hide()
 		end)
-		btn:RegisterForClicks("LeftButtonUp", "LeftButtonDown")
+		-- Up only: both Up+Down invoke PreClick twice per mouse press (double icons on the order strip).
+		btn:RegisterForClicks("LeftButtonUp")
 		btn:SetAttribute("type", "macro")
-		btn:SetAttribute("useOnKeyDown", true)
+		btn:SetAttribute("useOnKeyDown", false)
 		btn:SetScript("PreClick", function()
 			BroadcastOrderFromLeaderClick(sym)
 		end)
@@ -635,7 +634,7 @@ local function PrintHelp()
 	print("  |cffffffff/lura show|r / |cffffffff/lura on|r / |cffffffff/lura hide|r / |cffffffff/lura off|r — set UI shown or hidden")
 	print("  |cffffffff/lura reset|r — default layout")
 	print("  |cffffffff/lura config|r — open Options")
-	print("  |cffffffffSync:|r lead/assist clicks broadcast the order strip (raid or party channel; 30s idle clear).")
+	print("  |cffffffffSync:|r lead/assist clicks broadcast the order strip (addon: PARTY or RAID; 30s idle clear). Macros stay /raid.")
 end
 
 SLASH_LURA1 = "/lura"
@@ -949,7 +948,6 @@ commsFrame:SetScript("OnEvent", function(_, event, ...)
 			ClearOrderSyncState()
 		end
 		if bar then
-			RefreshLuraButtonMacros()
 			RequestApplyLayout()
 		end
 	end
