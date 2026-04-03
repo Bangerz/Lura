@@ -1,0 +1,10 @@
+## Interface: 110007,120000,120001,120002
+## Title: L'ura
+## Notes: /raid leader bar (solo or lead/assist) + order strip (raid sync). /lura toggles both. Esc > Options > AddOns or /lura help.
+## Author: Bangerz-DarkIron
+## Version: 1.4.0
+## IconTexture: Interface\TargetingFrame\UI-RaidTargetingIcon_4
+## SavedVariables: LuraDB
+
+Lura.lua
+##Bindings.xml
