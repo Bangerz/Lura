@@ -1,9 +1,10 @@
 --[[
-	L'ura — quick /raid buttons for raid marker callouts.
+	L'ura — quick /raid or /p buttons for raid marker callouts.
 	Raid pulls are in combat: ChatEdit_SendText / prefilled chat will not submit. Clicks use SecureActionButton + macro.
-	Always /raid (use in a raid; outside a raid the client may not deliver the line).
-	Raid leader/assist: /raid lines broadcast addon order. Order strip is a separate frame (icons, own grip/position). /lura show|hide|toggle controls both; leader bar only shows if solo or raid/party lead or assist.
-	Queue clears 30s after the last icon, or when you leave the raid.
+	In a raid, macros use /raid; in a party, /p (raid markers still parse in party chat).
+	Order sync uses addon messages on leader/assist PreClick (not CHAT_MSG_RAID — self-echo is unreliable). PARTY or RAID distribution by group type.
+	Order strip is a separate frame (icons, own grip/position). /lura show|hide|toggle controls both; leader bar only shows if solo or raid/party lead or assist.
+	Queue clears 30s after the last icon, or when you leave the group.
 ]]
 
 local ADDON_NAME = ...
@@ -198,20 +199,31 @@ local function ClearOrderSyncState()
 	RefreshOrderQueueUI()
 end
 
-local function FindRaidUnitForSender(sender)
-	if not sender or sender == "" or not IsInRaid() then
+local function FindGroupUnitForSender(sender)
+	if not sender or sender == "" or not IsInGroup() then
 		return nil
 	end
 	local want = NormalizeSenderKey(sender)
 	if want == PlayerSenderKey() then
 		return "player"
 	end
-	for i = 1, GetNumGroupMembers() do
-		local u = "raid" .. i
-		if UnitExists(u) then
-			local full = GetUnitName(u, true)
-			if full and NormalizeSenderKey(full) == want then
-				return u
+	if IsInRaid() then
+		for i = 1, GetNumGroupMembers() do
+			local u = "raid" .. i
+			if UnitExists(u) then
+				local full = GetUnitName(u, true)
+				if full and NormalizeSenderKey(full) == want then
+					return u
+				end
+			end
+		end
+	else
+		for _, u in ipairs({ "party1", "party2", "party3", "party4" }) do
+			if UnitExists(u) then
+				local full = GetUnitName(u, true)
+				if full and NormalizeSenderKey(full) == want then
+					return u
+				end
 			end
 		end
 	end
@@ -222,41 +234,52 @@ local function UnitMayBroadcastOrder(unit)
 	return unit and (UnitIsGroupLeader(unit) or UnitIsGroupAssistant(unit))
 end
 
-local function TryBroadcastOrderFromRaidChat(text, author)
-	if not IsInRaid() then
+-- Party has no assistants; raid allows leader or promoted assist.
+local function PlayerMayBroadcastOrderAddon()
+	if not IsInGroup() then
+		return false
+	end
+	if IsInRaid() then
+		return UnitIsGroupLeader("player") or UnitIsGroupAssistant("player")
+	end
+	return UnitIsGroupLeader("player")
+end
+
+local function OrderAddonDistribution()
+	if IsInRaid() then
+		return "RAID"
+	end
+	if IsInGroup() then
+		return "PARTY"
+	end
+	return nil
+end
+
+-- Do not rely on CHAT_MSG_RAID for our own /raid line: retail often omits or alters self-chat events.
+local function BroadcastOrderFromLeaderClick(sym)
+	if not sym or not PlayerMayBroadcastOrderAddon() then
 		return
 	end
-	if not UnitMayBroadcastOrder("player") then
+	local dist = OrderAddonDistribution()
+	if not dist then
 		return
 	end
-	local selfShort = UnitName("player")
-	local selfFull = GetUnitName("player", true)
-	local authKey = NormalizeSenderKey(author)
-	if authKey ~= NormalizeSenderKey(selfShort) and authKey ~= NormalizeSenderKey(selfFull or selfShort) then
-		return
-	end
-	local trimmed = strtrim(text or "")
-	for _, sym in ipairs(SYMBOLS) do
-		if trimmed == BuildSayMessage(sym) then
-			broadcastSeq = broadcastSeq + 1
-			local payload = "a:" .. tostring(broadcastSeq) .. ":" .. tostring(sym.raidIcon)
-			pcall(function()
-				C_ChatInfo.SendAddonMessage(ORDER_PREFIX, payload, "RAID")
-			end)
-			AppendOrderIcon(sym.raidIcon)
-			return
-		end
-	end
+	broadcastSeq = broadcastSeq + 1
+	local payload = "a:" .. tostring(broadcastSeq) .. ":" .. tostring(sym.raidIcon)
+	pcall(function()
+		C_ChatInfo.SendAddonMessage(ORDER_PREFIX, payload, dist)
+	end)
+	AppendOrderIcon(sym.raidIcon)
 end
 
 local function OnAddonOrderMessage(sender, msg)
-	if not IsInRaid() or not sender or sender == "" then
+	if not IsInGroup() or not sender or sender == "" then
 		return
 	end
 	if NormalizeSenderKey(sender) == PlayerSenderKey() then
 		return
 	end
-	local unit = FindRaidUnitForSender(sender)
+	local unit = FindGroupUnitForSender(sender)
 	if not UnitMayBroadcastOrder(unit) then
 		return
 	end
@@ -275,9 +298,23 @@ local function OnAddonOrderMessage(sender, msg)
 	AppendOrderIcon(icon)
 end
 
-local RAID_PREFIX = "/raid "
+local function MacroChatPrefix()
+	if IsInRaid() then
+		return "/raid "
+	end
+	if IsInGroup() then
+		return "/p "
+	end
+	return "/raid "
+end
 
 local function TooltipChannelLabel()
+	if IsInRaid() then
+		return "Raid"
+	end
+	if IsInGroup() then
+		return "Party"
+	end
 	return "Raid"
 end
 
@@ -292,7 +329,7 @@ local function RefreshLuraButtonMacros()
 	for i, sym in ipairs(SYMBOLS) do
 		local btn = luraButtons[i]
 		if btn then
-			local macroLine = RAID_PREFIX .. BuildSayMessage(sym)
+			local macroLine = MacroChatPrefix() .. BuildSayMessage(sym)
 			if #macroLine > 255 then
 				print("|cffff5555L'ura:|r line too long for macro (255 max).")
 			else
@@ -568,6 +605,9 @@ local function CreateMainUI()
 		btn:RegisterForClicks("LeftButtonUp", "LeftButtonDown")
 		btn:SetAttribute("type", "macro")
 		btn:SetAttribute("useOnKeyDown", true)
+		btn:SetScript("PreClick", function()
+			BroadcastOrderFromLeaderClick(sym)
+		end)
 		luraButtons[i] = btn
 	end
 
@@ -595,7 +635,7 @@ local function PrintHelp()
 	print("  |cffffffff/lura show|r / |cffffffff/lura on|r / |cffffffff/lura hide|r / |cffffffff/lura off|r — set UI shown or hidden")
 	print("  |cffffffff/lura reset|r — default layout")
 	print("  |cffffffff/lura config|r — open Options")
-	print("  |cffffffffSync:|r lead/assist /raid lines fill the order strip for the raid (30s idle clear).")
+	print("  |cffffffffSync:|r lead/assist clicks broadcast the order strip (raid or party channel; 30s idle clear).")
 end
 
 SLASH_LURA1 = "/lura"
@@ -894,25 +934,22 @@ macroRefreshFrame:SetScript("OnEvent", function()
 end)
 
 local commsFrame = CreateFrame("Frame")
-commsFrame:RegisterEvent("CHAT_MSG_RAID")
 commsFrame:RegisterEvent("CHAT_MSG_ADDON")
 commsFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 commsFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 commsFrame:SetScript("OnEvent", function(_, event, ...)
-	if event == "CHAT_MSG_RAID" then
-		local text, author = ...
-		TryBroadcastOrderFromRaidChat(text, author)
-	elseif event == "CHAT_MSG_ADDON" then
+	if event == "CHAT_MSG_ADDON" then
 		local prefix, message, _, sender = ...
-		if prefix ~= ORDER_PREFIX or not IsInRaid() then
+		if prefix ~= ORDER_PREFIX or not IsInGroup() then
 			return
 		end
 		OnAddonOrderMessage(sender, message)
 	elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
-		if not IsInRaid() then
+		if not IsInGroup() then
 			ClearOrderSyncState()
 		end
 		if bar then
+			RefreshLuraButtonMacros()
 			RequestApplyLayout()
 		end
 	end
