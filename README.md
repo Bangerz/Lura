@@ -1,5 +1,7 @@
 # L'ura
 
+<img width="538" height="206" alt="image" src="https://github.com/user-attachments/assets/62c4ae33-215b-4101-bef7-008c8b7f9471" />
+
 World of Warcraft **retail** add-on: a **leader bar** of five buttons that send **`/raid`** lines with a short label plus Blizzard’s raid-marker tokens (e.g. `Circle {circle}`, `T {star}`). Buttons use **custom rune art**; chat text still uses the normal markers so the game shows standard raid icons in chat.
 
 A separate **order strip** shows the **sequence** of markers as raid leader or assistants use the bar—synced over the **addon channel** for everyone in the raid who runs L’ura.
